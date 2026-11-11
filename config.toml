@@ -1,0 +1,145 @@
+# Search profile. Everything the script searches for and filters on lives here.
+# Edit this file to track other roles (frontend, DevOps, data...). Every setting is explained in README.md.
+# To keep several profiles, copy this file and run with  --config my_profile.toml
+# (or set the JOB_ALERTS_CONFIG environment variable).
+
+[search]
+# Sent to LinkedIn as-is. Keep it SHORT (single words / a few phrases joined by OR):
+# long lists of quoted phrases make LinkedIn return a stale result set.
+# Precision comes from [filters] and [[groups]] below, not from this line.
+keywords = 'AI OR python OR backend OR LLM OR "machine learning" OR "software engineer"'
+
+# Extra remote-only search per country; jobs found there are tagged Remote.
+remote_pass = true
+
+# true = ONLY remote jobs (skips the normal search; remote_pass is then ignored).
+remote_only = false
+
+# Pages per country (10 jobs per page). Override per location below.
+max_pages = 3
+
+[window_minutes]
+# How far back to look. Match it to how often each runner runs.
+local = 30    # laptop runs every 30 min
+cloud = 60    # GitHub Actions runs every hour
+
+# Catch-up: if the last successful run (laptop OR cloud) was longer ago than the window above,
+# search back to that run instead (+ overlap), so nothing is missed while the laptop was off.
+catch_up = true
+catch_up_overlap = 5   # extra minutes of overlap
+max = 1440             # never search further back than this (24 h)
+
+[filters]
+# A title must contain at least one of these words (whole-word match, case-insensitive).
+# Leave empty [] to skip this check.
+title_require_any = ["engineer", "engineering", "developer", "sde", "programmer"]
+
+# Titles containing any of these (whole word/phrase, case-insensitive) are dropped. Checked before groups.
+title_exclude = [
+    "sales", "recruiter", "talent", "intern", "internship", "account manager", "marketing",
+    "frontend", "front-end", "front end", "ios", "android", "qa", "quality assurance", "test engineer",
+    "mechanical", "civil", "electrical", "hardware", "teacher", "tutor", "trainer", "annotation",
+    "founder", ".net", "c#", "php", "devops", "site reliability", "sre", "community", "network engineer",
+    "security engineer", "cloud engineer", "embedded", "firmware", "salesforce", "sap",
+    "cybersecurity", "threat", "specialist", "java", "ruby", "react", "angular", "vue",
+    "data analyst", "data scientist", "manager", "product manager",
+]
+
+# Role groups, checked top to bottom; the first group whose title_terms match wins.
+# Titles matching no group are dropped.
+# description_terms (optional): only keep the job if its full description mentions one of these.
+# That costs one extra LinkedIn request per job, capped by [description_check].limit_per_run.
+
+[[groups]]
+name = "AI"
+title_terms = ["ai", "artificial intelligence", "llm", "genai", "gen ai", "generative", "nlp", "agent", "agentic",
+               "machine learning", "ml", "mlops", "deep learning", "forward deployed"]
+
+[[groups]]
+name = "Python"
+title_terms = ["python", "django", "fastapi", "flask"]
+
+[[groups]]
+name = "Software/Backend + Python"
+title_terms = ["software engineer", "software developer", "software development engineer", "sde",
+               "backend", "back-end", "back end", "full stack", "full-stack", "fullstack"]
+description_terms = ["python", "django", "fastapi", "flask"]
+
+[description_check]
+limit_per_run = 25
+
+# Countries. geo_id = LinkedIn's location ID (README explains how to find one).
+# Optional per location: flag, max_pages.
+[[locations]]
+name = "Lebanon"
+geo_id = "101834488"
+flag = "🇱🇧"
+
+[[locations]]
+name = "United Arab Emirates"
+geo_id = "104305776"
+flag = "🇦🇪"
+
+[[locations]]
+name = "Qatar"
+geo_id = "104170880"
+flag = "🇶🇦"
+
+[[locations]]
+name = "Saudi Arabia"
+geo_id = "100459316"
+flag = "🇸🇦"
+
+[[locations]]
+name = "Kuwait"
+geo_id = "103239229"
+flag = "🇰🇼"
+
+[[locations]]
+name = "Bahrain"
+geo_id = "100425729"
+flag = "🇧🇭"
+
+[[locations]]
+name = "Oman"
+geo_id = "103619019"
+flag = "🇴🇲"
+
+[[locations]]
+name = "Jordan"
+geo_id = "103710677"
+flag = "🇯🇴"
+
+[[locations]]
+name = "Egypt"
+geo_id = "106155005"
+flag = "🇪🇬"
+
+[[locations]]
+name = "Turkey"
+geo_id = "102105699"
+flag = "🇹🇷"
+
+[[locations]]
+name = "United Kingdom"
+geo_id = "101165590"
+flag = "🇬🇧"
+max_pages = 6
+
+[[locations]]
+name = "United States"
+geo_id = "103644278"
+flag = "🇺🇸"
+max_pages = 6
+
+[notify]
+# Send "No new jobs" when a whole run finds nothing new.
+when_empty = true
+
+[runtime]
+# Cloud run is skipped if the laptop reported in more recently than this.
+local_heartbeat_minutes = 45
+block_alert_cooldown_hours = 6
+# Pause between LinkedIn requests (random in this range). LinkedIn returns 429 if you go faster.
+sleep_seconds = [4, 8]
+rate_limit_backoff_seconds = 90

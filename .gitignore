@@ -1,0 +1,9 @@
+# secrets
+.env
+service_account.json
+*.json
+
+# local
+.venv/
+__pycache__/
+logs/

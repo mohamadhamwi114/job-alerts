@@ -1,0 +1,5 @@
+requests>=2.31
+beautifulsoup4>=4.12
+gspread>=6.0
+python-dotenv>=1.0
+tomli>=2.0; python_version < "3.11"

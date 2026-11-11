@@ -1,0 +1,6 @@
+# Shell scripts must keep LF endings or bash fails with "bad interpreter" after a Windows checkout.
+*.sh  text eol=lf
+*.ps1 text eol=crlf
+*.py  text eol=lf
+*.yml text eol=lf
+*.md  text
