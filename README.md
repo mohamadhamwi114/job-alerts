@@ -493,6 +493,7 @@ Included geo IDs:
 |---|---|---|
 | `sleep_seconds` | `[4, 8]` | Random pause (seconds) between LinkedIn requests. Increase it if you get `HTTP 429` often. |
 | `rate_limit_backoff_seconds` | `90` | Wait after a 429 before retrying once. A second 429 (search or description check) ends the run early. The next run catches up. |
+| `max_backoffs_per_run` | `3` | How many 90-second back-offs one run may take. After that, the next 429 ends the run and the next run catches up. GitHub's servers get rate-limited far more than a home connection, so this keeps cloud runs short. |
 | `max_run_minutes` | `12` | Stop searching after this long, so a slow run never hits GitHub's job time limit (`timeout-minutes: 20` in the workflow). The next run catches up the rest. |
 | `local_heartbeat_minutes` | `45` | The cloud run skips itself if your computer ran within this many minutes. Keep it a bit above your local schedule. |
 | `block_alert_cooldown_hours` | `6` | If LinkedIn blocks every search, you get a ⚠️ Telegram warning at most once per this many hours. |

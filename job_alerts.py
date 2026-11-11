@@ -124,6 +124,7 @@ class LinkedIn:
         rt = cfg.get("runtime", {})
         self.sleep_range = tuple(rt.get("sleep_seconds", [4, 8]))
         self.backoff = rt.get("rate_limit_backoff_seconds", 90)
+        self.backoffs_left = rt.get("max_backoffs_per_run", 3)
 
     def _get(self, url, params=None):
         """Response on 200, None on other failures, RateLimited if 429 persists after one back-off."""
@@ -138,8 +139,9 @@ class LinkedIn:
             if r.status_code == 200:
                 return r
             if r.status_code in (429, 999):
-                if attempt == 0:
-                    log(f"  HTTP {r.status_code}, backing off {self.backoff}s")
+                if attempt == 0 and self.backoffs_left > 0:
+                    self.backoffs_left -= 1
+                    log(f"  HTTP {r.status_code}, backing off {self.backoff}s ({self.backoffs_left} back-offs left)")
                     time.sleep(self.backoff)
                     continue
                 raise RateLimited()

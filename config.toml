@@ -143,6 +143,8 @@ block_alert_cooldown_hours = 6
 # Pause between LinkedIn requests (random in this range). LinkedIn returns 429 if you go faster.
 sleep_seconds = [4, 8]
 rate_limit_backoff_seconds = 90
+# After this many back-offs in one run, the next 429 ends the run (the next run catches up).
+max_backoffs_per_run = 3
 # Stop searching after this many minutes; the next run catches up the rest.
 # Keep it below timeout-minutes in .github/workflows/job_alerts.yml.
 max_run_minutes = 12
