@@ -2,8 +2,7 @@ name: job-alerts
 
 on:
   schedule:
-    # every 30 min. Off-peak minutes: GitHub delays or drops many runs scheduled at :00.
-    - cron: "7,37 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 concurrency:
