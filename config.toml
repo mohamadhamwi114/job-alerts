@@ -21,7 +21,7 @@ max_pages = 3
 [window_minutes]
 # How far back to look. Match it to how often each runner runs.
 local = 30    # laptop runs every 30 min
-cloud = 60    # GitHub Actions runs every hour
+cloud = 30    # GitHub Actions runs every 30 min
 
 # Catch-up: if the last successful run (laptop OR cloud) was longer ago than the window above,
 # search back to that run instead (+ overlap), so nothing is missed while the laptop was off.

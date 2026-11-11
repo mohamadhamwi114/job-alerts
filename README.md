@@ -11,7 +11,7 @@ mentions Python**, in the Middle East, UK and US. Change [`config.toml`](config.
 - **No LinkedIn login**: it uses LinkedIn's public (logged-out) job search, so your LinkedIn account is never touched.
 - **Alerts only**: it never applies to anything automatically.
 - **One message per country**, sent as soon as that country is searched. No waiting for the whole run.
-- **Hybrid scheduling**: every 30 min on your computer when it's on, every hour on GitHub's servers when it's off,
+- **Hybrid scheduling**: every 30 min on your computer when it's on, every 30 min on GitHub's servers when it's off,
   with automatic catch-up so nothing posted while you were offline is missed, and never the same job twice.
 - **Windows, Linux and macOS.**
 
@@ -90,8 +90,8 @@ the Sheet's `meta` tab:
   cloud run exits in seconds. If it's older, your computer is off or asleep, so the cloud run does the full search.
 
 **Catch-up: nothing falls through the gap.** A fixed window would miss jobs around the switch-over. Example: the computer
-runs at 10:00 and is shut down, the cloud skips at 10:30 (heartbeat still fresh), and at 11:30 a 60-minute window would
-only cover 10:30–11:30. So every complete run also records `last_run` in `meta`, and the next run, on either side,
+runs at 10:00 and is shut down, the cloud skips at 10:37 (heartbeat still fresh), and at 11:07 a 30-minute window would
+only cover 10:37–11:07. So every complete run also records `last_run` in `meta`, and the next run, on either side,
 searches back to that moment (+5 min overlap) if that's longer than its normal window, up to 24 h. The same applies when
 you turn your computer on in the morning: its first run covers the whole night, if the cloud didn't already.
 
@@ -325,9 +325,13 @@ Remove it with `./install_cron.sh --remove`. Output goes to `logs/run_YYYY-MM-DD
 
 ## Step 6: Cloud backup with GitHub Actions
 
-`.github/workflows/job_alerts.yml` runs **every hour** (on the hour, UTC) on GitHub's servers, and on demand.
+`.github/workflows/job_alerts.yml` runs **every 30 minutes** (at :07 and :37, UTC) on GitHub's servers, and on demand.
 If your computer ran in the last 45 minutes it exits immediately. Otherwise it searches the last
-`window_minutes.cloud` minutes (60), or further back if the catch-up says so.
+`window_minutes.cloud` minutes (30), or further back if the catch-up says so.
+
+GitHub's scheduler is best-effort: scheduled runs can start 5–30+ minutes late, and a new repo's first scheduled run
+can take an hour or more to appear. Minutes like :07 are used because runs at :00 are the most often delayed or dropped.
+The catch-up covers any late or skipped run.
 
 ### 6A. Create the repo
 1. Sign up or log in at https://github.com.
@@ -414,7 +418,7 @@ TOML basics: `key = value`, text in quotes, lists in `[ ]`, comments start with 
 | Variable | Default | What it does |
 |---|---|---|
 | `local` | `30` | Search window for runs on your computer. **Match it to the schedule** (every 30 min → 30). Make it a bit bigger (e.g. 40) if you want overlap in case a run starts late; dedupe stops repeats. |
-| `cloud` | `60` | Search window for GitHub Actions runs (every hour). |
+| `cloud` | `30` | Search window for GitHub Actions runs (every 30 min). |
 | `catch_up` | `true` | If the last complete run (either side) was longer ago than the window, search back to it instead. Prevents gaps when switching between computer and cloud, or after a night off. |
 | `catch_up_overlap` | `5` | Extra minutes added to the catch-up window, for late starts. |
 | `max` | `1440` | Never search further back than this many minutes (24 h). |
@@ -580,7 +584,7 @@ from the Middle East, keep `remote_only = false` and use two config files (see *
 ### Change how often it runs
 - Windows: edit `-Minutes 30` in `register_task.ps1` and run it again.
 - Linux/macOS: edit `*/30` in `install_cron.sh` and run it again.
-- Cloud: edit `cron: "0 * * * *"` in `.github/workflows/job_alerts.yml` (times are UTC). Every 2 h = `"0 */2 * * *"`.
+- Cloud: edit `cron: "7,37 * * * *"` in `.github/workflows/job_alerts.yml` (times are UTC). Every hour = `"7 * * * *"`, every 2 h = `"7 */2 * * *"`. Set `window_minutes.cloud` to match.
 - Then update `[window_minutes]` to match.
 
 ### Several profiles (e.g. you + a friend, or backend + frontend)
