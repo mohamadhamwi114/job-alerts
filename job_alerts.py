@@ -363,6 +363,16 @@ def country_messages(location, jobs, window_min):
 
 # ---------- main ----------
 
+def check_secrets(runner):
+    missing = [k for k in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "SHEET_ID") if not os.environ.get(k, "").strip()]
+    if not os.environ.get("GOOGLE_SA_JSON", "").strip():
+        key = os.environ.get("GOOGLE_SA_FILE", "service_account.json")
+        if not os.path.exists(key if os.path.isabs(key) else os.path.join(HERE, key)):
+            missing.append("GOOGLE_SA_JSON" if runner == "cloud" else f"GOOGLE_SA_FILE ({key} not found)")
+    if missing:
+        where = "GitHub repo → Settings → Secrets and variables → Actions" if runner == "cloud" else ".env"
+        sys.exit(f"Missing or empty: {', '.join(missing)}. Add them in {where} (see README Step 6C / Step 1).")
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--runner", choices=["local", "cloud"], default="local")
@@ -387,6 +397,7 @@ def main():
     sh = jobs_ws = rejected_ws = None
     seen = set()
     if not args.dry_run:
+        check_secrets(args.runner)
         wait_for_network()
         sh = open_sheet()
         if args.runner == "cloud":
