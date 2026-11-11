@@ -31,6 +31,7 @@ JOBS_HEADER = [
     "job_id", "title", "company", "location", "country", "work_type", "keyword_group",
     "posted", "url", "first_seen", "found_by", "status",
 ]
+REJECTED_HEADER = ["job_id", "title", "checked_at"]
 TG_LIMIT = 4000
 
 
@@ -275,12 +276,13 @@ def open_sheet():
         gc = gspread.service_account(filename=key if os.path.isabs(key) else os.path.join(HERE, key))
     sh = gc.open_by_key(os.environ["SHEET_ID"])
     titles = [w.title for w in sh.worksheets()]
-    if "jobs" not in titles:
-        sh.add_worksheet("jobs", rows=1000, cols=len(JOBS_HEADER)).append_row(JOBS_HEADER)
+    for name, header in (("jobs", JOBS_HEADER), ("rejected", REJECTED_HEADER)):
+        ws = sh.worksheet(name) if name in titles else sh.add_worksheet(name, rows=1000, cols=len(header))
+        # Row 1 must be the header: dedupe skips it. Restore it if someone cleared the tab.
+        if ws.row_values(1) != header:
+            ws.insert_row(header, 1)
     if "meta" not in titles:
         sh.add_worksheet("meta", rows=20, cols=2)
-    if "rejected" not in titles:
-        sh.add_worksheet("rejected", rows=1000, cols=3).append_row(["job_id", "title", "checked_at"])
     return sh
 
 
@@ -426,7 +428,13 @@ def main():
     attempts = failures = total_matched = total_sent = 0
     complete = True
 
+    deadline = run_start + timedelta(minutes=rt.get("max_run_minutes", 12))
+
     for idx, loc in enumerate(locations):
+        if now_utc() > deadline:
+            log(f"time budget ({rt.get('max_run_minutes', 12)} min) used up; next run catches up the rest")
+            complete = False
+            break
         log(f"search {loc['name']}")
         try:
             found, a, f = search_location(li, cfg, loc, window_s)
@@ -441,11 +449,14 @@ def main():
         failures += f
         total_matched += len(found)
         new = [j for j in found.values() if j["job_id"] not in seen]
+        stop_after = False
         try:
             new, rejected = description_filter(li, new, budget)
         except RateLimited:
-            log("  rate-limited during description checks; sending what's confirmed")
+            log("  rate-limited during description checks; sending what's confirmed, then stopping")
             new, rejected = [j for j in new if not j["group"]["description_terms"]], []
+            complete = False
+            stop_after = True
         seen.update(j["job_id"] for j in new + rejected)
         log(f"  {len(found)} matching, {len(new)} new, {len(rejected)} rejected by description")
 
@@ -467,6 +478,8 @@ def main():
                 value_input_option="RAW",
             )
             total_sent += len(new)
+        if stop_after:
+            break
 
     log(f"done: {total_matched} matching, {total_sent} sent, {failures}/{attempts} searches failed")
     if args.dry_run:
