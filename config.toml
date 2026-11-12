@@ -23,8 +23,8 @@ max_pages = 3
 local = 30    # laptop runs every 30 min
 cloud = 30    # GitHub Actions runs every 30 min
 
-# Catch-up: if the last successful run (laptop OR cloud) was longer ago than the window above,
-# search back to that run instead (+ overlap), so nothing is missed while the laptop was off.
+# Catch-up (per country): if a country was last fully searched (laptop OR cloud) longer ago than the window
+# above, search it back to that point instead (+ overlap), so nothing is missed while the laptop was off.
 catch_up = true
 catch_up_overlap = 5   # extra minutes of overlap
 max = 1440             # never search further back than this (24 h)

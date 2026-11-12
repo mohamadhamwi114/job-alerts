@@ -91,9 +91,12 @@ the Sheet's `meta` tab:
 
 **Catch-up: nothing falls through the gap.** A fixed window would miss jobs around the switch-over. Example: the computer
 runs at 10:00 and is shut down, the cloud skips at 10:37 (heartbeat still fresh), and at 11:07 a 30-minute window would
-only cover 10:37–11:07. So every complete run also records `last_run` in `meta`, and the next run, on either side,
-searches back to that moment (+5 min overlap) if that's longer than its normal window, up to 24 h. The same applies when
-you turn your computer on in the morning: its first run covers the whole night, if the cloud didn't already.
+only cover 10:37–11:07. So each country records when it was last fully searched (`done:<country>` rows in `meta`), and
+the next run, on either side, searches that country back to that moment (+5 min overlap) if that's longer than its
+normal window, up to 24 h. A run cut short by LinkedIn rate limits only re-covers the countries it didn't finish, and
+the least recently finished countries are searched first. The same applies when you turn your computer on in the
+morning: its first run covers the whole night, if the cloud didn't already. The "(last N min)" in each Telegram
+header is that country's window.
 
 **A Telegram message looks like:**
 ```
@@ -419,7 +422,7 @@ TOML basics: `key = value`, text in quotes, lists in `[ ]`, comments start with 
 |---|---|---|
 | `local` | `30` | Search window for runs on your computer. **Match it to the schedule** (every 30 min → 30). Make it a bit bigger (e.g. 40) if you want overlap in case a run starts late; dedupe stops repeats. |
 | `cloud` | `30` | Search window for GitHub Actions runs (every 30 min). |
-| `catch_up` | `true` | If the last complete run (either side) was longer ago than the window, search back to it instead. Prevents gaps when switching between computer and cloud, or after a night off. |
+| `catch_up` | `true` | If a country was last fully searched (either side) longer ago than the window, search it back to that point instead. Prevents gaps when switching between computer and cloud, or after a night off. |
 | `catch_up_overlap` | `5` | Extra minutes added to the catch-up window, for late starts. |
 | `max` | `1440` | Never search further back than this many minutes (24 h). |
 

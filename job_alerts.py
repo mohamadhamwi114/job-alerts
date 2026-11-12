@@ -400,6 +400,7 @@ def main():
 
     sh = jobs_ws = rejected_ws = None
     seen = set()
+    last_done = {}
     if not args.dry_run:
         check_secrets(args.runner)
         wait_for_network()
@@ -414,20 +415,28 @@ def main():
         jobs_ws, rejected_ws = sh.worksheet("jobs"), sh.worksheet("rejected")
         seen = set(jobs_ws.col_values(1)[1:]) | set(rejected_ws.col_values(1)[1:])
 
-        # Catch-up: cover everything since the last complete run by either runner.
-        last_run = parse_iso(meta_get(sh, "last_run")) if wcfg.get("catch_up", True) else None
-        if last_run:
-            gap = int((run_start - last_run).total_seconds() // 60) + wcfg.get("catch_up_overlap", 5)
-            if gap > window_min:
-                window_min = min(gap, wcfg.get("max", 1440))
-                log(f"last complete run {last_run:%Y-%m-%d %H:%M} UTC; catching up {window_min} min")
+        # Catch-up is per country: each one remembers when it was last fully searched ("done:<name>" in meta),
+        # so a run cut short by rate limits only re-covers the countries it didn't finish.
+        if wcfg.get("catch_up", True):
+            meta = {r[0]: r[1] for r in sh.worksheet("meta").get_all_values() if len(r) > 1}
+            fallback = meta.get("last_run", "")
+            last_done = {loc["name"]: parse_iso(meta.get(f"done:{loc['name']}", fallback)) for loc in locations}
+            # Least recently finished countries go first, so short runs don't keep starving the last ones.
+            oldest = datetime(1970, 1, 1, tzinfo=timezone.utc)
+            locations = sorted(locations, key=lambda l: last_done[l["name"]] or oldest)
 
-    window_s = window_min * 60
+    def window_for(loc):
+        done = last_done.get(loc["name"])
+        if not done:
+            return window_min
+        gap = int((run_start - done).total_seconds() // 60) + wcfg.get("catch_up_overlap", 5)
+        return min(max(window_min, gap), wcfg.get("max", 1440))
+
     log(f"config={os.path.basename(args.config)} runner={args.runner} window={window_min} min "
         f"locations={len(locations)}")
     li = LinkedIn(cfg)
     budget = [cfg.get("description_check", {}).get("limit_per_run", 25)]
-    attempts = failures = total_matched = total_sent = 0
+    attempts = failures = total_matched = total_sent = used_min = 0
     complete = True
 
     deadline = run_start + timedelta(minutes=rt.get("max_run_minutes", 12))
@@ -437,9 +446,11 @@ def main():
             log(f"time budget ({rt.get('max_run_minutes', 12)} min) used up; next run catches up the rest")
             complete = False
             break
-        log(f"search {loc['name']}")
+        loc_min = window_for(loc)
+        used_min = max(used_min, loc_min)
+        log(f"search {loc['name']} (last {loc_min} min)")
         try:
-            found, a, f = search_location(li, cfg, loc, window_s)
+            found, a, f = search_location(li, cfg, loc, loc_min * 60)
         except RateLimited:
             log("  rate-limited twice; stopping this run early")
             remaining = len(locations) - idx
@@ -452,6 +463,7 @@ def main():
         total_matched += len(found)
         new = [j for j in found.values() if j["job_id"] not in seen]
         stop_after = False
+        to_check = len(new)
         try:
             new, rejected = description_filter(li, new, budget)
         except RateLimited:
@@ -472,7 +484,7 @@ def main():
         if rejected:
             rejected_ws.append_rows([[j["job_id"], j["title"], stamp()] for j in rejected], value_input_option="RAW")
         if new:
-            for msg in country_messages(loc, new, window_min):
+            for msg in country_messages(loc, new, loc_min):
                 tg_send(msg)
             jobs_ws.append_rows(
                 [[j["job_id"], j["title"], j["company"], j["location"], j["country"], j["work_type"],
@@ -480,6 +492,11 @@ def main():
                 value_input_option="RAW",
             )
             total_sent += len(new)
+        # Fully searched (no failed page, every new job classified): this country's catch-up point moves on.
+        if f == 0 and not stop_after and len(new) + len(rejected) == to_check:
+            meta_set(sh, f"done:{loc['name']}", run_start.isoformat(timespec="seconds"))
+        else:
+            complete = False
         if stop_after:
             break
 
@@ -499,7 +516,7 @@ def main():
         sys.exit(1)
 
     if total_sent == 0 and cfg.get("notify", {}).get("when_empty", True):
-        tg_send(f"No new jobs ({args.runner}, last {window_min} min, {total_matched} matching already seen).")
+        tg_send(f"No new jobs ({args.runner}, last {used_min or window_min} min, {total_matched} matching already seen).")
 
 
 if __name__ == "__main__":
