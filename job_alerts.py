@@ -29,7 +29,7 @@ HEADERS = {
 }
 JOBS_HEADER = [
     "job_id", "title", "company", "location", "country", "work_type", "keyword_group",
-    "posted", "url", "first_seen", "found_by", "status",
+    "posted", "url", "first_seen", "found_by", "status", "apply",
 ]
 REJECTED_HEADER = ["job_id", "title", "checked_at"]
 TG_LIMIT = 4000
@@ -168,14 +168,21 @@ class LinkedIn:
                 break
         return found, True
 
-    def description(self, job_id):
-        """Lower-cased description text, or None if it couldn't be fetched."""
+    def posting(self, job_id):
+        """(lower-cased description text or None, apply type) for one job; (None, None) if it couldn't be fetched.
+        Apply type: "Easy Apply" (applied on LinkedIn), "External" (company site), or "" if the page doesn't say."""
         r = self._get(DESCRIPTION_URL.format(job_id))
         if r is None:
-            return None
+            return None, None
+        if "apply-link-onsite" in r.text:
+            apply = "Easy Apply"
+        elif "apply-link-offsite" in r.text:
+            apply = "External"
+        else:
+            apply = ""
         soup = BeautifulSoup(r.text, "html.parser")
         d = soup.select_one("div.show-more-less-html__markup") or soup.select_one("div.description__text")
-        return f" {d.get_text(' ', strip=True).lower()} " if d else None
+        return (f" {d.get_text(' ', strip=True).lower()} " if d else None), apply
 
 
 def parse_cards(page_html):
@@ -258,11 +265,23 @@ def description_filter(li, jobs, budget):
         if budget[0] <= 0:
             continue
         budget[0] -= 1
-        text = li.description(j["job_id"])
+        text, apply = li.posting(j["job_id"])
         if text is None:
             continue
+        j["apply"] = apply
         (kept if any(has_term(text, t) for t in terms) else rejected).append(j)
     return kept, rejected
+
+
+def apply_check(li, jobs, budget):
+    """Tags each job Easy Apply / External from its posting page (one request each, up to budget per run).
+    Jobs already tagged by the description check cost nothing; jobs over budget are sent untagged."""
+    for j in jobs:
+        if "apply" in j or budget[0] <= 0:
+            continue
+        budget[0] -= 1
+        _, apply = li.posting(j["job_id"])
+        j["apply"] = apply or ""
 
 
 # ---------- Google Sheet ----------
@@ -280,9 +299,16 @@ def open_sheet():
     titles = [w.title for w in sh.worksheets()]
     for name, header in (("jobs", JOBS_HEADER), ("rejected", REJECTED_HEADER)):
         ws = sh.worksheet(name) if name in titles else sh.add_worksheet(name, rows=1000, cols=len(header))
-        # Row 1 must be the header: dedupe skips it. Restore it if someone cleared the tab.
-        if ws.row_values(1) != header:
-            ws.insert_row(header, 1)
+        if ws.col_count < len(header):
+            ws.add_cols(len(header) - ws.col_count)
+        # Row 1 must be the header: dedupe skips it. Restore it if someone cleared the tab,
+        # or extend it in place if a newer version added columns.
+        first = ws.row_values(1)
+        if first != header:
+            if first and first[0] == header[0]:
+                ws.update(values=[header], range_name="A1")
+            else:
+                ws.insert_row(header, 1)
     if "meta" not in titles:
         sh.add_worksheet("meta", rows=20, cols=2)
     return sh
@@ -349,10 +375,11 @@ def country_messages(location, jobs, window_min):
     blocks = [head + "\n━━━━━━━━━━━━━━━"]
     for j in sorted(jobs, key=lambda x: (x["work_type"] != "Remote", x["group"]["name"])):
         tag = "🌍 Remote" if j["work_type"] == "Remote" else "🏢 On-site/Hybrid"
+        apply = {"Easy Apply": " · ⚡ Easy Apply", "External": " · 🔗 External apply"}.get(j.get("apply", ""), "")
         blocks.append(
             f"<a href=\"{j['url']}\">{e(j['title'])}</a>\n"
             f"{e(j['company'])} · {e(j['location'])}\n"
-            f"{tag} · {e(j['group']['name'])}"
+            f"{tag} · {e(j['group']['name'])}{apply}"
         )
     messages, buf = [], ""
     for b in blocks:
@@ -436,6 +463,8 @@ def main():
         f"locations={len(locations)}")
     li = LinkedIn(cfg)
     budget = [cfg.get("description_check", {}).get("limit_per_run", 25)]
+    apply_on = cfg.get("apply_check", {}).get("enabled", True)
+    apply_budget = [cfg.get("apply_check", {}).get("limit_per_run", 30)]
     attempts = failures = total_matched = total_sent = used_min = 0
     complete = True
 
@@ -471,6 +500,13 @@ def main():
             new, rejected = [j for j in new if not j["group"]["description_terms"]], []
             complete = False
             stop_after = True
+        if apply_on and not stop_after:
+            try:
+                apply_check(li, new, apply_budget)
+            except RateLimited:
+                log("  rate-limited during apply checks; sending the rest untagged, then stopping")
+                complete = False
+                stop_after = True
         seen.update(j["job_id"] for j in new + rejected)
         log(f"  {len(found)} matching, {len(new)} new, {len(rejected)} rejected by description")
 
@@ -478,7 +514,8 @@ def main():
             for j in rejected:
                 print(f"    x {j['title']} | {j['company']}")
             for j in new:
-                print(f"    + [{j['work_type']}] [{j['group']['name']}] {j['title']} | {j['company']} | {j['url']}")
+                print(f"    + [{j['work_type']}] [{j['group']['name']}] [{j.get('apply') or '?'}] "
+                      f"{j['title']} | {j['company']} | {j['url']}")
             continue
 
         if rejected:
@@ -488,7 +525,8 @@ def main():
                 tg_send(msg)
             jobs_ws.append_rows(
                 [[j["job_id"], j["title"], j["company"], j["location"], j["country"], j["work_type"],
-                  j["group"]["name"], j["posted"], j["url"], stamp(), args.runner, ""] for j in new],
+                  j["group"]["name"], j["posted"], j["url"], stamp(), args.runner, "", j.get("apply", "")]
+                 for j in new],
                 value_input_option="RAW",
             )
             total_sent += len(new)

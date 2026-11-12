@@ -68,6 +68,13 @@ description_terms = ["python", "django", "fastapi", "flask"]
 [description_check]
 limit_per_run = 25
 
+[apply_check]
+# Tag each new job "⚡ Easy Apply" (apply on LinkedIn) or "🔗 External apply" (company site).
+# Costs one LinkedIn request per job (free for jobs already fetched by the description check).
+# Jobs over the limit are still sent, just untagged. enabled = false turns it off.
+enabled = true
+limit_per_run = 30
+
 # Countries. geo_id = LinkedIn's location ID (README explains how to find one).
 # Optional per location: flag, max_pages.
 [[locations]]

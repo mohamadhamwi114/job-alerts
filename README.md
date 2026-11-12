@@ -104,12 +104,14 @@ header is that country's window.
 ━━━━━━━━━━━━━━━
 Senior AI Engineer
 Acme Ltd · London, England, United Kingdom
-🌍 Remote · AI
+🌍 Remote · AI · ⚡ Easy Apply
 
 Python Software Engineer
 Foo Corp · Manchester, England, United Kingdom
-🏢 On-site/Hybrid · Python
+🏢 On-site/Hybrid · Python · 🔗 External apply
 ```
+**⚡ Easy Apply** = you apply inside LinkedIn. **🔗 External apply** = the button sends you to the company's site.
+No tag = not checked this run (see [`[apply_check]`](#apply_check-easy-apply-or-external)).
 
 ---
 
@@ -236,7 +238,7 @@ The script creates these tabs on its first run:
 
 | Tab | Contents |
 |---|---|
-| **`jobs`** | one row per job sent: `job_id, title, company, location, country, work_type, keyword_group, posted, url, first_seen, found_by, status`. Use **`status`** yourself (e.g. `applied`, `skip`). |
+| **`jobs`** | one row per job sent: `job_id, title, company, location, country, work_type, keyword_group, posted, url, first_seen, found_by, status, apply`. Use **`status`** yourself (e.g. `applied`, `skip`). `apply` is `Easy Apply`, `External` or empty. Filter on it to see only Easy Apply jobs. |
 | **`rejected`** | jobs whose description didn't contain the required words, so they're not checked again |
 | **`meta`** | internal state (`last_local_run`, `last_block_alert`). Don't edit. |
 
@@ -465,6 +467,16 @@ description_terms = ["python", "django", "fastapi", "flask"]
 | Variable | Default | What it does |
 |---|---|---|
 | `limit_per_run` | `25` | Max job descriptions opened per run (all countries together). Jobs over the limit aren't lost: they're checked on the next run. Lower it if you see many `HTTP 429`. |
+
+### `[apply_check]`: Easy Apply or external
+
+Opens each new job's public page to see where its Apply button goes. Jobs already opened by the description check
+cost nothing extra.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `enabled` | `true` | `false` = no apply tags, and runs need fewer LinkedIn requests. |
+| `limit_per_run` | `30` | Max extra job pages opened per run (all countries together). Jobs over the limit are still sent, just without a tag. Lower it if you see many `HTTP 429`. |
 
 ### `[[locations]]`: which countries (one block per country)
 
