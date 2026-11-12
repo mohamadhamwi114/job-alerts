@@ -52,8 +52,9 @@ mentions Python**, in the Middle East, UK and US. Change [`config.toml`](config.
   │   4. drop jobs already in the Sheet                                               │
   │   5. if the group needs it, open the job description and check for keywords       │
   │   6. send that country's jobs to Telegram  →  7. append them to the Sheet         │
+  │      (nothing new? → "🇱🇧 Lebanon · no new jobs (last 30 min)")                  │
   │                                                                                   │
-  │ nothing new at all? → "No new jobs" message                                       │
+  │ countries not reached (rate limit)? → "⏸ Not searched this run: ..." message     │
   └───────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -282,7 +283,7 @@ A full run takes about 3–6 minutes (12 countries, gentle request rate). The ou
 ...
 [13:08:40] done: 61 matching, 14 sent, 0/24 searches failed
 ```
-Run it again right away and it should say `0 sent` (and you'll get "No new jobs"). That shows dedupe works.
+Run it again right away and it should say `0 sent` (and you'll get "no new jobs" per country). That shows dedupe works.
 
 ---
 
@@ -476,7 +477,7 @@ cost nothing extra.
 | Variable | Default | What it does |
 |---|---|---|
 | `enabled` | `true` | `false` = no apply tags, and runs need fewer LinkedIn requests. |
-| `limit_per_run` | `30` | Max extra job pages opened per run (all countries together). Jobs over the limit are still sent, just without a tag. Lower it if you see many `HTTP 429`. |
+| `limit_per_run` | `15` | Max extra job pages opened per run (all countries together). Jobs over the limit are still sent, just without a tag. Lower it if you see many `HTTP 429`. |
 
 ### `[[locations]]`: which countries (one block per country)
 
@@ -504,16 +505,17 @@ Included geo IDs:
 
 | Variable | Default | What it does |
 |---|---|---|
-| `when_empty` | `true` | Send "No new jobs" when a whole run finds nothing new. `false` = stay quiet (silence then means "nothing new" **or** "didn't run": check the logs). |
+| `each_country` | `true` | One message per country every run, even with nothing new (`🇱🇧 Lebanon · no new jobs (last 30 min)`), or saying its search failed / was interrupted. Countries a run couldn't reach are listed in one `⏸ Not searched this run` message; they go first next run. `false` = only countries with new jobs send a message. |
+| `when_empty` | `true` | Only used with `each_country = false`: send one "No new jobs" when a whole run finds nothing new. `false` = stay quiet (silence then means "nothing new" **or** "didn't run": check the logs). |
 
 ### `[runtime]`: politeness and timing
 
 | Variable | Default | What it does |
 |---|---|---|
-| `sleep_seconds` | `[4, 8]` | Random pause (seconds) between LinkedIn requests. Increase it if you get `HTTP 429` often. |
+| `sleep_seconds` | `[6, 10]` | Random pause (seconds) between LinkedIn requests. Increase it if you get `HTTP 429` often. |
 | `rate_limit_backoff_seconds` | `90` | Wait after a 429 before retrying once. A second 429 (search or description check) ends the run early. The next run catches up. |
 | `max_backoffs_per_run` | `3` | How many 90-second back-offs one run may take. After that, the next 429 ends the run and the next run catches up. GitHub's servers get rate-limited far more than a home connection, so this keeps cloud runs short. |
-| `max_run_minutes` | `12` | Stop searching after this long, so a slow run never hits GitHub's job time limit (`timeout-minutes: 20` in the workflow). The next run catches up the rest. |
+| `max_run_minutes` | `15` | Stop searching after this long, so a slow run never hits GitHub's job time limit (`timeout-minutes: 20` in the workflow). The next run catches up the rest. |
 | `local_heartbeat_minutes` | `45` | The cloud run skips itself if your computer ran within this many minutes. Keep it a bit above your local schedule. |
 | `block_alert_cooldown_hours` | `6` | If LinkedIn blocks every search, you get a ⚠️ Telegram warning at most once per this many hours. |
 
@@ -636,7 +638,7 @@ or share one Sheet. Dedupe works across profiles either way.
 
 | Symptom | Cause / fix |
 |---|---|
-| No Telegram messages at all | With `when_empty = true` every run sends something, so silence means it didn't run or crashed. Check `logs/`, Task Scheduler history, or the Actions run log. |
+| No Telegram messages at all | With `each_country = true` (or `when_empty = true`) every run sends something, so silence means it didn't run or crashed. Check `logs/`, Task Scheduler history, or the Actions run log. |
 | `chat not found` from Telegram | You haven't sent `hi` to your bot, or the chat ID is wrong. Redo Step 2B–2C. |
 | `401 Unauthorized` from Telegram | Wrong token. Copy it again from BotFather (`/mybots` → your bot → *API Token*). |
 | `waiting for network...` then `giving up` | No internet, or Telegram unreachable. The script already falls back to Cloudflare DNS if your router's DNS fails. |

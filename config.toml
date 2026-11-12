@@ -73,7 +73,7 @@ limit_per_run = 25
 # Costs one LinkedIn request per job (free for jobs already fetched by the description check).
 # Jobs over the limit are still sent, just untagged. enabled = false turns it off.
 enabled = true
-limit_per_run = 30
+limit_per_run = 15
 
 # Countries. geo_id = LinkedIn's location ID (README explains how to find one).
 # Optional per location: flag, max_pages.
@@ -140,7 +140,10 @@ flag = "🇺🇸"
 max_pages = 6
 
 [notify]
-# Send "No new jobs" when a whole run finds nothing new.
+# One message per country even when it has nothing new ("🇱🇧 Lebanon · no new jobs (last 30 min)"),
+# plus a note listing countries a run couldn't reach (rate limit / time limit).
+each_country = true
+# Only used when each_country = false: one "No new jobs" message when a whole run finds nothing new.
 when_empty = true
 
 [runtime]
@@ -148,10 +151,10 @@ when_empty = true
 local_heartbeat_minutes = 45
 block_alert_cooldown_hours = 6
 # Pause between LinkedIn requests (random in this range). LinkedIn returns 429 if you go faster.
-sleep_seconds = [4, 8]
+sleep_seconds = [6, 10]
 rate_limit_backoff_seconds = 90
 # After this many back-offs in one run, the next 429 ends the run (the next run catches up).
 max_backoffs_per_run = 3
 # Stop searching after this many minutes; the next run catches up the rest.
 # Keep it below timeout-minutes in .github/workflows/job_alerts.yml.
-max_run_minutes = 12
+max_run_minutes = 15

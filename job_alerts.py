@@ -469,6 +469,8 @@ def main():
     complete = True
 
     deadline = run_start + timedelta(minutes=rt.get("max_run_minutes", 12))
+    each_country = cfg.get("notify", {}).get("each_country", True)
+    processed = set()
 
     for idx, loc in enumerate(locations):
         if now_utc() > deadline:
@@ -520,6 +522,15 @@ def main():
 
         if rejected:
             rejected_ws.append_rows([[j["job_id"], j["title"], stamp()] for j in rejected], value_input_option="RAW")
+        processed.add(loc["name"])
+        if not new and each_country:
+            head = f"{loc.get('flag', '📍')} <b>{html.escape(loc['name'])}</b> · "
+            if stop_after:
+                tg_send(head + "check interrupted by LinkedIn rate limit; next run retries")
+            elif f:
+                tg_send(head + f"search failed ({f}/{a} searches); next run retries")
+            else:
+                tg_send(head + f"no new jobs (last {loc_min} min)")
         if new:
             for msg in country_messages(loc, new, loc_min):
                 tg_send(msg)
@@ -546,6 +557,11 @@ def main():
     if complete and failures < attempts:
         meta_set(sh, "last_run", run_start.isoformat(timespec="seconds"))
 
+    skipped = [loc["name"] for loc in locations if loc["name"] not in processed]
+    if skipped and processed:
+        tg_send(f"⏸ Not searched this run (LinkedIn rate limit or time limit): {html.escape(', '.join(skipped))}. "
+                f"They go first next run, covering the time since they were last searched.")
+
     if attempts and failures == attempts:
         last_alert = parse_iso(meta_get(sh, "last_block_alert"))
         if not last_alert or now_utc() - last_alert > timedelta(hours=rt.get("block_alert_cooldown_hours", 6)):
@@ -553,7 +569,7 @@ def main():
             meta_set(sh, "last_block_alert", stamp())
         sys.exit(1)
 
-    if total_sent == 0 and cfg.get("notify", {}).get("when_empty", True):
+    if total_sent == 0 and not each_country and cfg.get("notify", {}).get("when_empty", True):
         tg_send(f"No new jobs ({args.runner}, last {used_min or window_min} min, {total_matched} matching already seen).")
 
 
