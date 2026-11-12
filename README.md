@@ -54,7 +54,7 @@ mentions Python**, in the Middle East, UK and US. Change [`config.toml`](config.
   │   6. send that country's jobs to Telegram  →  7. append them to the Sheet         │
   │      (nothing new? → "🇱🇧 Lebanon · no new jobs (last 30 min)")                  │
   │                                                                                   │
-  │ countries not reached (rate limit)? → "⏸ Not searched this run: ..." message     │
+  │ LinkedIn rate limit / time limit? → "⚠️ Issue: ..." sent at once, run stops     │
   └───────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -505,7 +505,12 @@ Included geo IDs:
 
 | Variable | Default | What it does |
 |---|---|---|
-| `each_country` | `true` | One message per country every run, even with nothing new (`🇱🇧 Lebanon · no new jobs (last 30 min)`), or saying its search failed / was interrupted. Countries a run couldn't reach are listed in one `⏸ Not searched this run` message; they go first next run. `false` = only countries with new jobs send a message. |
+| `each_country` | `true` | One message per country every run, even with nothing new (`🇱🇧 Lebanon · no new jobs (last 30 min)`), or saying its search failed / was interrupted. `false` = only countries with new jobs send a message. |
+
+**Issue alerts (always on):** when a run has to stop early (LinkedIn rate limit `HTTP 429` after the allowed
+back-offs, or `max_run_minutes` reached), the bot immediately sends
+`⚠️ Issue (local run): LinkedIn rate limit (HTTP 429) while searching Qatar. Stopping this run.` plus the list of
+countries not searched. Those go first in the next run, which covers the time since they were last searched.
 | `when_empty` | `true` | Only used with `each_country = false`: send one "No new jobs" when a whole run finds nothing new. `false` = stay quiet (silence then means "nothing new" **or** "didn't run": check the logs). |
 
 ### `[runtime]`: politeness and timing

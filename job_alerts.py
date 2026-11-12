@@ -471,10 +471,24 @@ def main():
     deadline = run_start + timedelta(minutes=rt.get("max_run_minutes", 12))
     each_country = cfg.get("notify", {}).get("each_country", True)
     processed = set()
+    issue_sent = False
+
+    def report_issue(what, rest):
+        """Tell Telegram right away why the run is stopping and which countries it won't reach."""
+        nonlocal issue_sent
+        if args.dry_run:
+            return
+        text = f"⚠️ <b>Issue</b> ({args.runner} run): {what}. Stopping this run."
+        if rest:
+            text += (f"\nNot searched this run: {html.escape(', '.join(l['name'] for l in rest))}."
+                     f"\nThey go first next run and cover the time since they were last searched.")
+        tg_send(text)
+        issue_sent = True
 
     for idx, loc in enumerate(locations):
         if now_utc() > deadline:
             log(f"time budget ({rt.get('max_run_minutes', 12)} min) used up; next run catches up the rest")
+            report_issue(f"run time limit ({rt.get('max_run_minutes', 12)} min) reached", locations[idx:])
             complete = False
             break
         loc_min = window_for(loc)
@@ -484,6 +498,8 @@ def main():
             found, a, f = search_location(li, cfg, loc, loc_min * 60)
         except RateLimited:
             log("  rate-limited twice; stopping this run early")
+            report_issue(f"LinkedIn rate limit (HTTP 429) while searching {html.escape(loc['name'])}",
+                         locations[idx:])
             remaining = len(locations) - idx
             attempts += remaining
             failures += remaining
@@ -502,6 +518,9 @@ def main():
             new, rejected = [j for j in new if not j["group"]["description_terms"]], []
             complete = False
             stop_after = True
+            report_issue(f"LinkedIn rate limit (HTTP 429) while checking job descriptions in "
+                         f"{html.escape(loc['name'])}; sending its confirmed jobs, the rest are retried next run",
+                         locations[idx + 1:])
         if apply_on and not stop_after:
             try:
                 apply_check(li, new, apply_budget)
@@ -509,6 +528,9 @@ def main():
                 log("  rate-limited during apply checks; sending the rest untagged, then stopping")
                 complete = False
                 stop_after = True
+                report_issue(f"LinkedIn rate limit (HTTP 429) while checking Easy Apply/External in "
+                             f"{html.escape(loc['name'])}; sending its jobs, some untagged",
+                             locations[idx + 1:])
         seen.update(j["job_id"] for j in new + rejected)
         log(f"  {len(found)} matching, {len(new)} new, {len(rejected)} rejected by description")
 
@@ -557,14 +579,10 @@ def main():
     if complete and failures < attempts:
         meta_set(sh, "last_run", run_start.isoformat(timespec="seconds"))
 
-    skipped = [loc["name"] for loc in locations if loc["name"] not in processed]
-    if skipped and processed:
-        tg_send(f"⏸ Not searched this run (LinkedIn rate limit or time limit): {html.escape(', '.join(skipped))}. "
-                f"They go first next run, covering the time since they were last searched.")
-
     if attempts and failures == attempts:
         last_alert = parse_iso(meta_get(sh, "last_block_alert"))
-        if not last_alert or now_utc() - last_alert > timedelta(hours=rt.get("block_alert_cooldown_hours", 6)):
+        if not issue_sent and (not last_alert or now_utc() - last_alert
+                               > timedelta(hours=rt.get("block_alert_cooldown_hours", 6))):
             tg_send(f"⚠️ LinkedIn blocked every search in the {args.runner} run.")
             meta_set(sh, "last_block_alert", stamp())
         sys.exit(1)
