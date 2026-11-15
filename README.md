@@ -26,12 +26,13 @@ mentions Python**, in the Middle East, UK and US. Change [`config.toml`](config.
 6. [Step 4: Run it on your computer](#step-4-run-it-on-your-computer)
 7. [Step 5: Schedule it every 30 minutes](#step-5-schedule-it-every-30-minutes)
 8. [Step 6: Cloud backup with GitHub Actions](#step-6-cloud-backup-with-github-actions)
-9. [Configuration (`config.toml`)](#configuration-configtoml)
-10. [Common changes (recipes)](#common-changes-recipes)
-11. [Environment variables & command-line options](#environment-variables--command-line-options)
-12. [Troubleshooting](#troubleshooting)
-13. [Security notes](#security-notes)
-14. [Stopping / uninstalling](#stopping--uninstalling)
+9. [Step 7: On-time cloud runs with cron-job.org (optional)](#step-7-on-time-cloud-runs-with-cron-joborg-optional)
+10. [Configuration (`config.toml`)](#configuration-configtoml)
+11. [Common changes (recipes)](#common-changes-recipes)
+12. [Environment variables & command-line options](#environment-variables--command-line-options)
+13. [Troubleshooting](#troubleshooting)
+14. [Security notes](#security-notes)
+15. [Stopping / uninstalling](#stopping--uninstalling)
 
 ---
 
@@ -335,9 +336,9 @@ Remove it with `./install_cron.sh --remove`. Output goes to `logs/run_YYYY-MM-DD
 If your computer ran in the last 45 minutes it exits immediately. Otherwise it searches the last
 `window_minutes.cloud` minutes (30), or further back if the catch-up says so.
 
-GitHub's scheduler is best-effort: scheduled runs can start 5–30+ minutes late, and a new repo's first scheduled run
-can take an hour or more to appear. Minutes like :07 are used because runs at :00 are the most often delayed or dropped.
-The catch-up covers any late or skipped run.
+GitHub's scheduler is best-effort: on small repos it often runs only every few hours instead of every 30 minutes.
+No jobs are lost (the catch-up covers the gap), but they arrive late. For on-time runs, add the free external
+trigger in [Step 7](#step-7-on-time-cloud-runs-with-cron-joborg-optional).
 
 ### 6A. Create the repo
 1. Sign up or log in at https://github.com.
@@ -398,7 +399,54 @@ Open the run → **run** job → expand *Run python job_alerts.py*:
 
 > GitHub pauses scheduled workflows in **public** repos after 60 days without commits. You'll get an email.
 > Re-enable with one click (Actions → job-alerts → Enable workflow) or make any small commit.
-> Scheduled runs can also start 5–20 minutes late. The cloud window covers that.
+> Scheduled runs can also start late or be skipped. The catch-up covers that; Step 7 fixes it.
+
+---
+
+## Step 7: On-time cloud runs with cron-job.org (optional)
+
+GitHub's own timer may run your workflow only every few hours. [cron-job.org](https://cron-job.org) (free) can start
+it through GitHub's API every 30 minutes, on time. The GitHub schedule stays as a backup; if both fire close together,
+the second run skips itself (`cloud_min_gap_minutes`).
+
+### 7A. Create a GitHub token that can only start this workflow
+1. Open https://github.com/settings/personal-access-tokens/new (fine-grained token).
+2. **Token name:** `cron-job-trigger` · **Expiration:** your choice (e.g. 1 year).
+3. **Repository access:** **Only select repositories** → your `job-alerts` repo.
+4. **Permissions** → **Add permissions** → **Actions** → set to **Read and write**.
+   (Metadata: Read-only is added automatically.) Nothing else.
+5. **Generate token** and copy it (starts with `github_pat_`). It's shown only once.
+   Don't save it inside the project folder; paste it straight into cron-job.org.
+
+### 7B. Create the cron job
+Sign up at https://console.cron-job.org/signup → **Create cronjob**.
+
+**Common** tab:
+
+| Field | Value |
+|---|---|
+| Title | `job-alerts trigger` |
+| URL | `https://api.github.com/repos/<your-username>/job-alerts/actions/workflows/job_alerts.yml/dispatches` |
+| Schedule | Custom → crontab expression `7,37 * * * *` (or simply "every 30 minutes") |
+
+**Advanced** tab:
+
+| Field | Value |
+|---|---|
+| Request method | `POST` |
+| Header 1 | Key `Authorization`, value `Bearer github_pat_...` (the word Bearer, one space, your token) |
+| Header 2 | Key `Accept`, value `application/vnd.github+json` |
+| Request body | `{"ref":"main"}` |
+| Authentication (user/password) | leave off |
+| Treat 3xx as success | doesn't matter (GitHub answers 204) |
+
+### 7C. Test
+Click **Test run**:
+- **204** = working. A new run (event *workflow_dispatch*) appears in your repo's **Actions** tab within seconds.
+- **401 / 403** = token wrong, expired, or missing *Actions: Read and write*. Check the `Bearer ` prefix.
+- **404** = typo in the URL (username, repo name or `job_alerts.yml`).
+
+When the token expires, generate a new one (7A) and replace it in the header.
 
 ---
 
@@ -522,6 +570,7 @@ countries not searched. Those go first in the next run, which covers the time si
 | `max_backoffs_per_run` | `3` | How many 90-second back-offs one run may take. After that, the next 429 ends the run and the next run catches up. GitHub's servers get rate-limited far more than a home connection, so this keeps cloud runs short. |
 | `max_run_minutes` | `15` | Stop searching after this long, so a slow run never hits GitHub's job time limit (`timeout-minutes: 20` in the workflow). The next run catches up the rest. |
 | `local_heartbeat_minutes` | `45` | The cloud run skips itself if your computer ran within this many minutes. Keep it a bit above your local schedule. |
+| `cloud_min_gap_minutes` | `20` | A cloud run skips itself if another cloud run started within this many minutes (GitHub's schedule and cron-job.org firing close together). |
 | `block_alert_cooldown_hours` | `6` | If LinkedIn blocks every search, you get a ⚠️ Telegram warning at most once per this many hours. |
 
 ---

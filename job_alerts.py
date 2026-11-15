@@ -437,6 +437,12 @@ def main():
             if last_local and now_utc() - last_local < timedelta(minutes=rt.get("local_heartbeat_minutes", 45)):
                 log(f"laptop ran at {last_local:%H:%M} UTC; skipping cloud run")
                 return
+            # Two triggers (GitHub's schedule + an external one like cron-job.org) can fire close together.
+            last_cloud = parse_iso(meta_get(sh, "last_cloud_run"))
+            if last_cloud and now_utc() - last_cloud < timedelta(minutes=rt.get("cloud_min_gap_minutes", 20)):
+                log(f"another cloud run started at {last_cloud:%H:%M} UTC; skipping duplicate")
+                return
+            meta_set(sh, "last_cloud_run", stamp())
         else:
             meta_set(sh, "last_local_run", stamp())
         jobs_ws, rejected_ws = sh.worksheet("jobs"), sh.worksheet("rejected")

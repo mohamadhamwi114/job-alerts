@@ -149,6 +149,9 @@ when_empty = true
 [runtime]
 # Cloud run is skipped if the laptop reported in more recently than this.
 local_heartbeat_minutes = 45
+# A cloud run is skipped if another cloud run started less than this many minutes ago
+# (GitHub's own schedule and an external trigger such as cron-job.org can fire close together).
+cloud_min_gap_minutes = 20
 block_alert_cooldown_hours = 6
 # Pause between LinkedIn requests (random in this range). LinkedIn returns 429 if you go faster.
 sleep_seconds = [6, 10]

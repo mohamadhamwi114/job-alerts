@@ -2,9 +2,11 @@ name: job-alerts
 
 on:
   schedule:
-    # every 30 min. Off-peak minutes: GitHub delays or drops many runs scheduled at :00.
+    # Backup timer. GitHub runs schedules "best effort" and often hours late on small repos,
+    # so for on-time runs also trigger workflow_dispatch from cron-job.org (README Step 7).
+    # Duplicate runs skip themselves (runtime.cloud_min_gap_minutes in config.toml).
     - cron: "7,37 * * * *"
-  workflow_dispatch:
+  workflow_dispatch:   # manual "Run workflow" button, and the API call cron-job.org makes
 
 concurrency:
   group: job-alerts
