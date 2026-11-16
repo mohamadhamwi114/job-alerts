@@ -240,17 +240,37 @@ def search_location(li, cfg, location, window_s):
         failures += not ok
         for j in cards:
             if j["job_id"] in jobs:
-                if remote:
-                    jobs[j["job_id"]]["work_type"] = "Remote"
+                if remote and jobs[j["job_id"]]["work_type"] != "Remote":
+                    jobs[j["job_id"]]["work_type"] = "Remote?"
                 continue
             group = match_group(cfg, j["title"])
             if not group:
                 continue
             j["country"] = location["name"]
             j["group"] = group
-            j["work_type"] = "Remote" if remote or "remote" in j["location"].lower() else "On-site/Hybrid"
+            # "Remote" only when the title/location says so. LinkedIn's remote filter also returns some
+            # on-site jobs, so those start as "Remote?" until the description confirms it (verify_remote).
+            if has_term(f" {j['title'].lower()} {j['location'].lower()} ", "remote"):
+                j["work_type"] = "Remote"
+            else:
+                j["work_type"] = "Remote?" if remote else "On-site/Hybrid"
             jobs[j["job_id"]] = j
     return jobs, attempts, failures
+
+
+REMOTE_SIGNS = ("remote", "work from home", "wfh", "work from anywhere", "fully distributed", "telecommute")
+NOT_REMOTE_SIGNS = ("not remote", "no remote", "non-remote", "not a remote", "remote work is not")
+
+
+def verify_remote(jobs):
+    """Settles "Remote?" jobs whose description was fetched: Remote if it mentions remote work, else On-site/Hybrid.
+    Jobs whose description wasn't fetched this run stay "Remote?" (shown as unconfirmed)."""
+    for j in jobs:
+        text = j.get("desc")
+        if j["work_type"] != "Remote?" or not text:
+            continue
+        remote = any(has_term(text, s) for s in REMOTE_SIGNS) and not any(s in text for s in NOT_REMOTE_SIGNS)
+        j["work_type"] = "Remote" if remote else "On-site/Hybrid"
 
 
 def description_filter(li, jobs, budget):
@@ -268,20 +288,23 @@ def description_filter(li, jobs, budget):
         text, apply = li.posting(j["job_id"])
         if text is None:
             continue
-        j["apply"] = apply
+        j["apply"], j["desc"] = apply, text
         (kept if any(has_term(text, t) for t in terms) else rejected).append(j)
     return kept, rejected
 
 
 def apply_check(li, jobs, budget):
     """Tags each job Easy Apply / External from its posting page (one request each, up to budget per run).
-    Jobs already tagged by the description check cost nothing; jobs over budget are sent untagged."""
-    for j in jobs:
+    Jobs already tagged by the description check cost nothing; jobs over budget are sent untagged.
+    "Remote?" jobs go first, since the same page also confirms whether they're really remote."""
+    for j in sorted(jobs, key=lambda x: x["work_type"] != "Remote?"):
         if "apply" in j or budget[0] <= 0:
             continue
         budget[0] -= 1
-        _, apply = li.posting(j["job_id"])
+        text, apply = li.posting(j["job_id"])
         j["apply"] = apply or ""
+        if text:
+            j["desc"] = text
 
 
 # ---------- Google Sheet ----------
@@ -373,8 +396,9 @@ def country_messages(location, jobs, window_min):
     e = html.escape
     head = f"{location.get('flag', '📍')} <b>{e(location['name'])}</b> · {len(jobs)} new (last {window_min} min)"
     blocks = [head + "\n━━━━━━━━━━━━━━━"]
-    for j in sorted(jobs, key=lambda x: (x["work_type"] != "Remote", x["group"]["name"])):
-        tag = "🌍 Remote" if j["work_type"] == "Remote" else "🏢 On-site/Hybrid"
+    order = {"Remote": 0, "Remote?": 1}
+    for j in sorted(jobs, key=lambda x: (order.get(x["work_type"], 2), x["group"]["name"])):
+        tag = {"Remote": "🌍 Remote", "Remote?": "🌍 Remote?"}.get(j["work_type"], "🏢 On-site/Hybrid")
         apply = {"Easy Apply": " · ⚡ Easy Apply", "External": " · 🔗 External apply"}.get(j.get("apply", ""), "")
         blocks.append(
             f"<a href=\"{j['url']}\">{e(j['title'])}</a>\n"
@@ -537,6 +561,7 @@ def main():
                 report_issue(f"LinkedIn rate limit (HTTP 429) while checking Easy Apply/External in "
                              f"{html.escape(loc['name'])}; sending its jobs, some untagged",
                              locations[idx + 1:])
+        verify_remote(new)
         seen.update(j["job_id"] for j in new + rejected)
         log(f"  {len(found)} matching, {len(new)} new, {len(rejected)} rejected by description")
 

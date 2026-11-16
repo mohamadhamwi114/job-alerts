@@ -8,3 +8,9 @@ token
 .venv/
 __pycache__/
 logs/
+
+# local images (post drafts, screenshots); only docs/ images are published
+/*.png
+/*.jpg
+/*.jpeg
+/*.gif

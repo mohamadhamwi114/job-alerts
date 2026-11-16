@@ -1,7 +1,12 @@
 # LinkedIn Job Alerts → Telegram + Google Sheets
 
+<p align="center"><img src="docs/job-robot.gif" alt="A tiny robot checks new jobs every 30 minutes, picks your roles with keyword rules and pings your phone" width="480"></p>
+
 Get a Telegram message within ~30 minutes of a new job being posted on LinkedIn, for the roles and countries **you**
 choose. Every job is also logged in a Google Sheet so you can track what you applied to.
+
+**No AI at runtime:** AI helped write the code once; every run is plain Python and keyword rules, so it costs
+0 tokens no matter how often it runs.
 
 Out of the box it tracks **AI engineers, Python engineers, and software/backend engineers whose job description
 mentions Python**, in the Middle East, UK and US. Change [`config.toml`](config.toml) to track anything else
@@ -14,6 +19,20 @@ mentions Python**, in the Middle East, UK and US. Change [`config.toml`](config.
 - **Hybrid scheduling**: every 30 min on your computer when it's on, every 30 min on GitHub's servers when it's off,
   with automatic catch-up so nothing posted while you were offline is missed, and never the same job twice.
 - **Windows, Linux and macOS.**
+
+## Quick start (about 15 minutes, computer only)
+
+1. **Get the code** and install it ([Step 1](#step-1-get-the-code)):
+   `git clone https://github.com/mohamadhamwi114/job-alerts.git`, create a virtual environment, `pip install -r requirements.txt`.
+2. **Create a Telegram bot** with @BotFather and get your chat ID ([Step 2](#step-2-create-a-telegram-bot-token--chat-id)).
+3. **Create a Google Sheet** and a free service account that can edit it ([Step 3](#step-3-set-up-the-google-sheet-service-account--sheet-id)).
+4. **Copy `.env.example` to `.env`** and fill in the 4 values.
+5. **Run it:** `python job_alerts.py --runner local` ([Step 4](#step-4-run-it-on-your-computer)). Your first alerts arrive in Telegram.
+
+Then, optionally: run it every 30 minutes on your computer ([Step 5](#step-5-schedule-it-every-30-minutes)), add the
+free cloud backup for when your computer is off ([Step 6](#step-6-cloud-backup-with-github-actions) and
+[Step 7](#step-7-on-time-cloud-runs-with-cron-joborg-optional)), and change roles or countries in
+[`config.toml`](#configuration-configtoml).
 
 ---
 
@@ -113,7 +132,12 @@ Foo Corp · Manchester, England, United Kingdom
 🏢 On-site/Hybrid · Python · 🔗 External apply
 ```
 **⚡ Easy Apply** = you apply inside LinkedIn. **🔗 External apply** = the button sends you to the company's site.
-No tag = not checked this run (see [`[apply_check]`](#apply_check-easy-apply-or-external)).
+No tag = not checked this run, or LinkedIn doesn't show the Apply button to logged-out visitors for that job
+(see [`[apply_check]`](#apply_check-easy-apply-or-external)).
+
+**🌍 Remote** = the title/location says remote, or the job description mentions remote work.
+**🌍 Remote?** = LinkedIn's remote filter returned it, but its description wasn't checked this run. LinkedIn's
+filter also returns some on-site jobs, so treat it as unconfirmed. **🏢 On-site/Hybrid** = everything else.
 
 ---
 
@@ -240,7 +264,7 @@ The script creates these tabs on its first run:
 
 | Tab | Contents |
 |---|---|
-| **`jobs`** | one row per job sent: `job_id, title, company, location, country, work_type, keyword_group, posted, url, first_seen, found_by, status, apply`. Use **`status`** yourself (e.g. `applied`, `skip`). `apply` is `Easy Apply`, `External` or empty. Filter on it to see only Easy Apply jobs. |
+| **`jobs`** | one row per job sent: `job_id, title, company, location, country, work_type, keyword_group, posted, url, first_seen, found_by, status, apply`. Use **`status`** yourself (e.g. `applied`, `skip`). `apply` is `Easy Apply`, `External` or empty. Filter on it to see only Easy Apply jobs. `work_type` is `Remote`, `Remote?` (unconfirmed) or `On-site/Hybrid`. |
 | **`rejected`** | jobs whose description didn't contain the required words, so they're not checked again |
 | **`meta`** | internal state (`last_local_run`, `last_block_alert`). Don't edit. |
 
@@ -463,7 +487,7 @@ TOML basics: `key = value`, text in quotes, lists in `[ ]`, comments start with 
 | Variable | Type | Default | What it does |
 |---|---|---|---|
 | `keywords` | text | | Sent to LinkedIn's search box as-is. Use `OR` between terms and quotes for phrases: `'AI OR python OR "software engineer"'`. **Keep it short** (a handful of words / short phrases): long lists of quoted phrases make LinkedIn return a stale, unchanging result set. Cast a wide net here; the filters below do the precise work. |
-| `remote_pass` | true/false | `true` | Also run a remote-only search per country. Jobs found there are tagged **🌍 Remote**. `false` halves the number of requests. |
+| `remote_pass` | true/false | `true` | Also run a remote-only search per country. Jobs found there are tagged **🌍 Remote?** until their description confirms remote work (then **🌍 Remote**, else **🏢 On-site/Hybrid**). `false` halves the number of requests. |
 | `remote_only` | true/false | `false` | `true` = **only** remote jobs. Skips the normal search, so `remote_pass` is ignored. |
 | `max_pages` | number | `3` | Result pages per country, 10 jobs each. Override per country in `[[locations]]`. |
 
